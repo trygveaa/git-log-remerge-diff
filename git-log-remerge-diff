@@ -1,0 +1,28 @@
+#!/bin/bash
+
+git diff-index --quiet HEAD -- || (echo 'Worktree must be clean' && exit 1)
+
+git log --color=always "$@" | (
+  while IFS='' read l; do
+    if [[ "$l" == [33mcommit* ]]; then
+      last_commit=$(echo $l | sed 's/[^m]*m//g' | cut -d' ' -f2)
+      if [ "$stored_diff" ]; then
+        echo -e "$stored_diff\n"
+        stored_diff=
+      fi
+    elif [[ "$l" == Merge:* ]]; then
+      rev1=$(echo $l | cut -d' ' -f2)
+      rev2=$(echo $l | cut -d' ' -f3)
+      git checkout $rev1 &>/dev/null
+      if ! git merge --no-ff --no-commit --no-rerere-autoupdate $rev2 &>/dev/null; then
+        stored_diff=$(git diff --color=always -R $last_commit)
+      fi
+      git merge --abort &>/dev/null
+      git checkout - &>/dev/null
+    fi
+    echo "$l"
+  done
+  if [ "$stored_diff" ]; then
+    echo -e "\n$stored_diff"
+  fi
+) | less -R
